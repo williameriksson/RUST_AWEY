@@ -1,5 +1,6 @@
 extern crate rand;
 
+use std::collections::HashMap;
 use std::io;
 use std::cmp::Ordering;
 use rand::Rng;
@@ -25,7 +26,7 @@ fn main() {
 
     let secret_number = rand::thread_rng().gen_range(1, 10);
     let mut attempts = 0;
-    let mut history: Vec<(u32, String)> = Vec::new();
+    let mut history = HashMap::new();
 
 
     loop {
@@ -41,7 +42,7 @@ fn main() {
         attempts += 1;
         println!("You guessed: {}, nr of attempts: {}", guess, attempts);
 
-        history.push((attempts, String::from(format!("{:?}", guess)))); 
+        history.insert(attempts, String::from(format!("{:?}", guess))); 
 
         match guess.cmp(&secret_number) {
             Ordering::Less    => println!("Too small!"),
@@ -49,13 +50,8 @@ fn main() {
             Ordering::Equal   => {
                 println!("You win!");
                 let history_iter = history.iter();
-                let mut print_count = 0;
-                for entry in history_iter.rev() {
-                    if print_count >= 3 {
-                        break;
-                    }
-                    println!("{:?}", entry);
-                    print_count += 1;
+                for (key, val) in history_iter {
+                    println!("{:?}, {:?}", key, val);
                 }
                 break;
             }
