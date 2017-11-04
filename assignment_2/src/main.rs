@@ -49,12 +49,13 @@ fn main() {
             Ordering::Equal   => {
                 println!("You win!");
                 let history_iter = history.iter();
-                for entry in history_iter.clone() {
-                     println!("{:?}", entry);
-                }
-
-                for entry in history_iter {
+                let mut print_count = 0;
+                for entry in history_iter.rev() {
+                    if print_count >= 3 {
+                        break;
+                    }
                     println!("{:?}", entry);
+                    print_count += 1;
                 }
                 break;
             }
