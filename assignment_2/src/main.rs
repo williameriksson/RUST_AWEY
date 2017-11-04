@@ -49,8 +49,12 @@ fn main() {
             Ordering::Equal   => {
                 println!("You win!");
                 let history_iter = history.iter();
-                for entry in history_iter {
+                for entry in history_iter.clone() {
                      println!("{:?}", entry);
+                }
+
+                for entry in history_iter {
+                    println!("{:?}", entry);
                 }
                 break;
             }
