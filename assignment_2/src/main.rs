@@ -23,8 +23,10 @@ fn read_input() -> std::result::Result<u32, String> {
 fn main() {
     println!("Guess the number!");
 
-    let secret_number = rand::thread_rng().gen_range(1, 101);
+    let secret_number = rand::thread_rng().gen_range(1, 10);
     let mut attempts = 0;
+    let mut history: Vec<(u32, String)> = Vec::new();
+
 
     loop {
         println!("Please input your guess.");
@@ -39,11 +41,17 @@ fn main() {
         attempts += 1;
         println!("You guessed: {}, nr of attempts: {}", guess, attempts);
 
+        history.push((attempts, String::from(format!("{:?}", guess)))); 
+
         match guess.cmp(&secret_number) {
             Ordering::Less    => println!("Too small!"),
             Ordering::Greater => println!("Too big!"),
             Ordering::Equal   => {
                 println!("You win!");
+                let history_iter = history.iter();
+                for entry in history_iter {
+                     println!("{:?}", entry);
+                }
                 break;
             }
         }
