@@ -16,7 +16,7 @@ https://www.youtube.com/watch?v=eMfcs0iO8zE
 Build the project with the required components listed in the description and implement functionality to create simple patterns with the LEDs while the stick is rotating.
 
 #### Grade 4
-Discuss and define how to implement functionality to generate human readable text that only requires a string as input. 
+Discuss and define how to implement functionality to generate human readable text that only requires a string as input. The solution shall be as hardware independent as possible so that it can be used on many targets with just small modifications or additions.
 
 #### Grade 5
-Implement functionality to generate human readable text that only requires a string as input.
+Implement the solution with the requirements listed in Grade 4.
