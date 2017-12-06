@@ -13,10 +13,10 @@ https://www.youtube.com/watch?v=eMfcs0iO8zE
 ### Grade requirements
 
 #### Grade 3
-Being able to switch the LEDs on / off.
+Build the project with the required components listed in the description and implement functionality to create simple patterns with the LEDs while the stick is rotating.
 
 #### Grade 4
-Being able to create patterns with the LEDs while the stick is rotating.
+Discuss and define how to implement functionality to generate human readable text that only requires a string as input. 
 
 #### Grade 5
-Being able to fully print human readable text.
+Implement functionality to generate human readable text that only requires a string as input.
