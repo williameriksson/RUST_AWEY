@@ -1,0 +1,27 @@
+[package]
+authors = ["William Eriksson"]
+categories = ["embedded", "no-std"]
+description = "Assignment 5a"
+keywords = ["arm", "cortex-m", "template"]
+license = "MIT OR Apache-2.0"
+name = "assignment_5a"
+repository = "https://github.com/japaric/cortex-m-quickstart"
+version = "0.2.1"
+
+[dependencies]
+cortex-m = "0.3.0"
+cortex-m-semihosting = "0.2.0"
+cortex-m-rtfm = "0.2.2"
+
+[dependencies.cortex-m-rt]
+features = ["abort-on-panic"]
+version = "0.3.3"
+
+# for the blue-pill (NOTE use this dependency or the other but not both)
+[dependencies.stm32f103xx]
+features = ["rt"] # this feature indicates that the device crate will provide the vector table
+version = "0.7.5"
+
+[profile.release]
+debug = true
+lto = true
