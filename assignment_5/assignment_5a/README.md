@@ -1,10 +1,10 @@
 # Description
 Three tasks program. It prints CPU statistics over ITM port 0, it takes commands over USART1 to control the blinking of the onboard LED.
 
-Commands:
-start
-pause
-period 1-1000 
+Commands:  
+start  
+pause  
+period 1-1000   
 
 # Build
 Install required tools according to the quick start guide provided in the course. Build by `xargo build --target thumbv7m-none-eabi`.
