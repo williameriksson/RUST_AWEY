@@ -24,7 +24,9 @@ app! {
     resources: {
         static IDLE_COUNTER: u32 = 0;
         static BUSY_COUNTER: u32 = 0;
-       // static BLINK_PERIOD: u16 = 100;
+        static RECEIVE_BUFFER: [u8; 128] = [0; 128];
+        static BUFFER_INDEX: u16 = 0;
+        static BLINK_ENABLE: bool = false;
     },
 
     idle: {
@@ -39,12 +41,12 @@ app! {
 
         TIM2: {
             path: blink_led,
-            resources: [TIM2, GPIOC],
+            resources: [TIM2, GPIOC, BLINK_ENABLE],
         },
 
        USART1: {
             path: cmd,
-            resources: [USART1, ITM] 
+            resources: [USART1, RECEIVE_BUFFER, BUFFER_INDEX, BLINK_ENABLE, TIM2] 
        }, 
     }, 
 } 
@@ -149,7 +151,15 @@ fn logging(t: &mut Threshold, r: SYS_TICK::Resources) {
 }
 
 fn blink_led(t: &mut Threshold, r: TIM2::Resources) {
-     
+    
+
+    let mut blink_enable = true;
+    r.BLINK_ENABLE.claim(t, |v, _t| blink_enable = **v);
+
+    if blink_enable == false {
+        return;
+    }
+
     r.TIM2.claim_mut(t, |tim2, _t| {
         tim2.sr.write(|w| w.uif().clear_bit()); 
     
@@ -161,17 +171,80 @@ fn blink_led(t: &mut Threshold, r: TIM2::Resources) {
     });
 }
 
-fn cmd(t: &mut Threshold, r: USART1::Resources) {
-   
-    let b = r.USART1.dr.read().bits() as u8;
-    iprintln!(&r.ITM.stim[0],"IN CMD: {}", b);
-     
-    r.USART1.claim_mut(t, |usart1, _t| {
 
-        usart1.dr.write(|w| unsafe{w.dr().bits(b as u16)});
+#[allow(non_snake_case)]
+fn usart_tx<A>(t: &mut Threshold, usart: &mut A, tx_str: &str) where A: Resource<Data = stm32f103xx::USART1>, {
 
-        //while usart1.sr.read().tc().bit_is_clear() {}
+    
+    usart.claim_mut(t, |usart1, _t| {
+        for b in tx_str.chars() {
+            usart1.dr.write(|w| unsafe{w.dr().bits(b as u16)});
+            while usart1.sr.read().tc().bit_is_clear() {}
+        }
     });
+}
+
+
+#[allow(non_snake_case)]
+fn cmd(t: &mut Threshold, USART1::Resources {USART1, RECEIVE_BUFFER, BUFFER_INDEX, BLINK_ENABLE, TIM2}:USART1::Resources ) {
+   
+    let b = USART1.dr.read().bits() as u8;
+    //iprintln!(&ITM.stim[0],"IN CMD: {}", b);
+
+    if b == 0x0a {
+        match core::str::from_utf8(&RECEIVE_BUFFER[..**BUFFER_INDEX as usize]) {
+            Ok(c) =>  {
+                let mut split_cmd = c.split(' ');
+                
+                match split_cmd.next().unwrap() {
+                    "start" => {
+                        **BLINK_ENABLE = true;
+                        usart_tx(t, USART1, "Blinking started \n \r")
+                    },
+                    "pause" => {
+                        **BLINK_ENABLE = false;
+                        usart_tx(t, USART1, "Blinking paused \n \r")
+                    },
+                    "period" => {
+                        let value = split_cmd.next().unwrap();
+        
+                        let parsed = value.parse::<u32>();
+                            match parsed {
+                            
+                                Ok(int_val) => {
+                                    if int_val > 0 && int_val <= 1000 {
+
+                                        TIM2.arr.write(|w| unsafe{w.bits(int_val)});    // Auto reload register
+                                        TIM2.cnt.write(|w| unsafe{w.bits(0)});
+                                        usart_tx(t, USART1, "Blinking period changed \n \r");
+                                    } else {
+                                        usart_tx(t, USART1, "Period must be > 0 and < 1000 ms \n \r")
+                                    }
+                                },
+                                Err(_) => usart_tx(t, USART1, "Error in parsing message \n \r"),
+                            }
+                             
+                    },
+                    _ => usart_tx(t, USART1, "Command not recognized \n \r"),
+
+                };
+
+            },
+            Err(_) => {
+                usart_tx(t, USART1, "Error in parsing message \n \r")
+                           
+            },
+        };
+
+        **BUFFER_INDEX = 0;
+
+    } else {
+        RECEIVE_BUFFER[**BUFFER_INDEX as usize] = b;
+        **BUFFER_INDEX += 1;
+    }
+
+
+     
 }
 
 
