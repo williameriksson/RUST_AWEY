@@ -14,7 +14,9 @@ use cortex_m::peripheral::SystClkSource;
 //use stm32f103xx::DWT;
 use rtfm::{app, Threshold, Resource};
 
-const FREQUENCY: u32 = 1; // Hz
+const LOGGING_FREQUENCY: u32 = 1; // Hz
+const BAUD_RATE: u32 = 115_200;
+
 
 app! {
     device: stm32f103xx,
@@ -26,7 +28,7 @@ app! {
     },
 
     idle: {
-        resources: [IDLE_COUNTER, BUSY_COUNTER, GPIOC, ITM, DWT],
+        resources: [IDLE_COUNTER, BUSY_COUNTER, DWT],
     },
 
     tasks: {
@@ -40,36 +42,32 @@ app! {
             resources: [TIM2, GPIOC],
         },
 
-       // USART1: {
-       //     path: usart2,
-       //     resources: [USART1]
-    
-       // }
-    },
-}
+       USART1: {
+            path: cmd,
+            resources: [USART1, ITM] 
+       }, 
+    }, 
+} 
 
-fn init(p: ::init::Peripherals, _r: ::init::Resources) {
-    
-    p.RCC.apb2enr.write(|w| w.iopcen().set_bit()); // Enable GPIOC clock
-   
+
+fn init(p: ::init::Peripherals, _r: ::init::Resources) { p.RCC.apb2enr.write(|w| w.iopcen().set_bit()); // Enable GPIOC clock 
     // Configure the SYSTICK
     p.SYST.set_clock_source(SystClkSource::Core);
-    p.SYST.set_reload(8_000_000 / FREQUENCY);
+    p.SYST.set_reload(8_000_000 / LOGGING_FREQUENCY);
     p.SYST.enable_interrupt();
     p.SYST.enable_counter();
 
-    // PC13 is wired to the bluepill user LED
-    p.GPIOC.crh.write(|w| w.mode13().bits(1)); // Set PC13 as outpus (max 2 MHz)
-    //p.GPIOC.odr.write(|w| w.odr13().bit(true));
+    p.RCC.apb2enr.modify(|_, w| w.iopcen().set_bit());  // Enable GPIOC clock
+    p.GPIOC.crh.write(|w| w.mode13().bits(1));          // Set PC13 as outpus (max 2 MHz) (user LED on bluepull)
 
-    p.RCC.apb1enr.modify(|_, w| w.tim2en().set_bit()); // Enable TIM2 peripheral clock
+    p.RCC.apb1enr.modify(|_, w| w.tim2en().set_bit());  // Enable TIM2 peripheral clock
    
-    let prescaler = 8000 - 1; // 8 Mhz / 8000 = 1kHz
+    let prescaler = 8000 - 1;                           // 8 Mhz / 8000 = 1kHz
     p.TIM2.psc.write(|w| w.psc().bits(prescaler));
 
-    // Set the auto reload register
+    
     let arr_value = 1000;
-    p.TIM2.arr.write(|w| unsafe{w.bits(arr_value)});
+    p.TIM2.arr.write(|w| unsafe{w.bits(arr_value)});    // Auto reload register
 
     p.TIM2.dier.write(|w| w.uie().set_bit());   // Interrupt enable TIM2 update event
     p.TIM2.egr.write(|w| w.ug().set_bit());     // Reset on timer interrupt
@@ -81,6 +79,19 @@ fn init(p: ::init::Peripherals, _r: ::init::Resources) {
         p.DWT.sleepcnt.write(0);
     }
     p.DWT.enable_cycle_counter();
+
+
+    p.RCC.apb2enr.modify(|_, w| w.usart1en().set_bit());            // Enable USART1 clock
+    p.RCC.apb2enr.modify(|_, w| w.iopaen().set_bit());              // Enable GPIOA clock
+    p.GPIOA.crh.modify(|_, w| w.mode9().bits(1).cnf9().bits(2));    // Set PA9 as output and then AF Push-pull
+
+
+    p.USART1.cr1.write(|w| w.ue().set_bit().re().set_bit().te().set_bit().rxneie().set_bit());
+    let baud = 8_000_000 / BAUD_RATE;
+   
+    p.USART1.brr.write(|w| unsafe{w.bits(baud)});
+
+
 
     iprintln!(&p.ITM.stim[0], "init done");
 }
@@ -126,12 +137,13 @@ fn logging(t: &mut Threshold, r: SYS_TICK::Resources) {
     if total_time > 0 {
         percent = time_busy.wrapping_mul(100).wrapping_div(total_time);
     }
-  
-    if percent < 50 {
-        for _ in 0..8000 {};
-    } else {
-        for _ in 0..3000 {};
-    }
+ 
+
+    //if percent < 50 {
+    //    for _ in 0..8000 {};
+    //} else {
+    //    for _ in 0..3000 {};
+   // }
     
     iprintln!(&r.ITM.stim[0],"busy: {}, idle: {}, percent: {}", time_busy, time_idle, percent);
 }
@@ -148,3 +160,19 @@ fn blink_led(t: &mut Threshold, r: TIM2::Resources) {
         gpioc.odr.write(|w| w.odr13().bit( !gpioc.odr.read().odr13().bit() ));
     });
 }
+
+fn cmd(t: &mut Threshold, r: USART1::Resources) {
+   
+    let b = r.USART1.dr.read().bits() as u8;
+    iprintln!(&r.ITM.stim[0],"IN CMD: {}", b);
+     
+    r.USART1.claim_mut(t, |usart1, _t| {
+
+        usart1.dr.write(|w| unsafe{w.dr().bits(b as u16)});
+
+        //while usart1.sr.read().tc().bit_is_clear() {}
+    });
+}
+
+
+
