@@ -30,7 +30,7 @@ app! {
     },
 
     idle: {
-        resources: [DWT, GPIOA, START_POSITION, NEXT_SLOT],
+        resources: [GPIOA, START_POSITION, NEXT_SLOT],
     },
 
     tasks: {
@@ -39,6 +39,7 @@ app! {
         },*/
 
         TIM2: {
+            priority: 1,
             path: blink_led,
             resources: [TIM2, GPIOC, GPIOA, START_POSITION, NEXT_SLOT],
         },
@@ -49,8 +50,9 @@ app! {
        },*/
 
        EXTI1: {
+            priority: 2,
             path: hall_sensor,
-            resources: [EXTI, START_POSITION, DWT, U_SEC_PER_REV, LAST_TIME_STAMP, NEXT_SLOT, TIM2],
+            resources: [EXTI, START_POSITION, U_SEC_PER_REV, LAST_TIME_STAMP, NEXT_SLOT, TIM2, DWT],
        },
     }, 
 } 
@@ -72,11 +74,11 @@ fn init(p: ::init::Peripherals, _r: ::init::Resources) {
 
     p.RCC.apb1enr.modify(|_, w| w.tim2en().set_bit());  // Enable TIM2 peripheral clock
    
-    let prescaler = 80 - 1;                           // 8 Mhz / 80 = 100kHz
+    let prescaler = 8 - 1;                           // 8 Mhz / 80 = 100kHz
     p.TIM2.psc.write(|w| w.psc().bits(prescaler));
 
     
-    let arr_value = 50;
+    let arr_value = 500;
     p.TIM2.arr.write(|w| unsafe{w.bits(arr_value)});    // Auto reload register
 
     p.TIM2.dier.write(|w| w.uie().set_bit());   // Interrupt enable TIM2 update event
@@ -84,12 +86,26 @@ fn init(p: ::init::Peripherals, _r: ::init::Resources) {
     p.TIM2.cr1.write(|w| w.arpe().set_bit());   // Auto reload on interrupt
     p.TIM2.cr1.write(|w| w.cen().bit(true));    // Enable TIM2
 
+    
     unsafe {
         p.DWT.cyccnt.write(0);
         p.DWT.sleepcnt.write(0);
     }
     p.DWT.enable_cycle_counter();
+   
+
+
+    /*let tim5_psc = 800 - 1; // 8Mhz / 8 = 1Mhz
+    p.RCC.apb1enr.modify(|_, w| w.tim5en().set_bit());  // Enable TIM5 peripheral clock 
     
+    let tim5_arr_value = 0xFFFF;
+    p.TIM5.arr.write(|w| unsafe{w.bits(tim5_arr_value)});    // Auto reload register
+    
+    p.TIM5.psc.write(|w| w.psc().bits(tim5_psc));
+    p.TIM5.egr.write(|w| w.ug().set_bit());     // Reset on timer interrupt
+    p.TIM5.cr1.write(|w| w.arpe().set_bit());   // Auto reload on interrupt
+    p.TIM5.cr1.write(|w| w.cen().bit(true));    // Enable TIM5
+*/
 
     //p.RCC.apb2enr.modify(|_, w| w.usart1en().set_bit());            // Enable USART1 clock
     p.RCC.apb2enr.modify(|_, w| w.iopaen().set_bit());              // Enable GPIOA clock
@@ -150,6 +166,8 @@ fn idle(t: &mut Threshold, mut r: ::idle::Resources) -> ! {
         [true, false, true, false, true],
         [true, false, true, false, true],
         [true, false, true, true, true]];
+
+    let BLANK = [false, false, false, false, false];
 
     let text = [
     
@@ -236,21 +254,77 @@ fn idle(t: &mut Threshold, mut r: ::idle::Resources) -> ! {
     }
 }
 
-fn hall_sensor(t: &mut Threshold, r: EXTI1::Resources) {
+fn hall_sensor(t: &mut Threshold, mut r: EXTI1::Resources) {
    
-    let current_time_stamp = r.DWT.cyccnt.read();
-    let u_sec_per_rev = current_time_stamp - **r.LAST_TIME_STAMP;
+    //let current_time_stamp: u32 = r.TIM5.cnt.read().cnt().bits() as u32;
+    
+    //let mut current_time_stamp: u32 = 0;
+    
+    //r.TIM5.claim(t, |v, _t| current_time_stamp = v.cnt.read().bits() as u32);
+        
+       // .cnt.read().cnt().bits() as u32;
+    
+    //r.TIM5.cnt.write(|w| unsafe{ w.bits(0)} );
 
-    **r.U_SEC_PER_REV = u_sec_per_rev;
-    **r.LAST_TIME_STAMP = current_time_stamp;
-    **r.START_POSITION = true;
-    **r.NEXT_SLOT = true;
+    //r.TIM5.egr.write(|w| w.tg().set_bit());
+    //r.TIM5.cr1.write(|w| w.cen().bit(true));    // Enable TIM5
+    /*r.TIM5.cnt.read(|v, _t| {
+        current_time_stamp = **v
+    });*/
+    let current_time_stamp = r.DWT.cyccnt.read();
+    unsafe {r.DWT.cyccnt.write(0)};
+    
+
+    r.START_POSITION.claim_mut(t, |start_pos, _t| {
+       **start_pos = true; 
+    });
+
+
+    r.NEXT_SLOT.claim_mut(t, |next_slot, _t| {
+       **next_slot = true; 
+    });
+    //**r.START_POSITION = true;
+    //**r.NEXT_SLOT = true;
+    
+    let u_sec_per_rev = current_time_stamp / 8;
+    let deg_per_u_sec = u_sec_per_rev / 360;
+
+
+    //let u_sec_per_rev = (current_time_stamp - **r.LAST_TIME_STAMP) / 8;
+
+    //**r.U_SEC_PER_REV = u_sec_per_rev;
+    //**r.LAST_TIME_STAMP = current_time_stamp;
+    //**r.START_POSITION = true;
+    //**r.NEXT_SLOT = true;
 
 
     //let arr_value = 50;
-    //let arr_value = u_sec_per_rev / 40000;
-    //r.TIM2.arr.write(|w| unsafe{w.bits(arr_value)});    // Auto reload register
     
+    //let slot_angle = 200 * 1_000_000;
+    let slot_angle = 5;
+    
+    let mut arr_value = u_sec_per_rev * slot_angle / 1_000_000;
+    
+    //let mut arr_value = slot_angle / deg_per_u_sec;
+
+
+    if arr_value <= 0 {
+        arr_value = 1;
+    } else if arr_value > 0xFFFF {
+        arr_value = 0xFFFF;
+    }
+    //if arr_value == 0 {
+    //    arr_value = 100;
+    //}
+    //
+    r.TIM2.claim_mut(t, |tim2, _t| {
+        tim2.arr.write(|w| unsafe{ w.bits(arr_value)  });   
+        tim2.egr.write(|w| w.tg().set_bit());
+    });
+    //r.TIM2.arr.write(|w| unsafe{w.bits(arr_value)});    // Auto reload register
+    //r.TIM2.egr.write(|w| w.tg().set_bit());
+
+
     r.EXTI.claim_mut(t, |exti, _t| {
         exti.pr.write(|w| w.pr1().set_bit()); 
     
@@ -283,7 +357,7 @@ fn hall_sensor(t: &mut Threshold, r: EXTI1::Resources) {
     //iprintln!(&r.ITM.stim[0],"busy: {}, idle: {}, percent: {}", time_busy, time_idle, percent);
 }*/
 
-fn blink_led(t: &mut Threshold, r: TIM2::Resources) {
+fn blink_led(t: &mut Threshold, mut r: TIM2::Resources) {
     
 
    /* let mut blink_enable = true;
@@ -297,7 +371,12 @@ fn blink_led(t: &mut Threshold, r: TIM2::Resources) {
         tim2.sr.write(|w| w.uif().clear_bit()); 
     
     });
-    **r.NEXT_SLOT = true;
+
+    r.NEXT_SLOT.claim_mut(t, |next_slot, _t| {
+       **next_slot = true; 
+    });
+
+    //**r.NEXT_SLOT = true;
 
 
     /*r.GPIOA.claim_mut(t, |gpioa, _t| { 
