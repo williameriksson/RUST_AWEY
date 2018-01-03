@@ -7,13 +7,15 @@ extern crate stm32f103xx;
 extern crate cortex_m_rtfm as rtfm;
 extern crate cortex_m;
 
+
+mod characters;
 //use cortex_m::{iprint, iprintln};
 //use core::fmt::Write;
 //use cortex_m::peripheral::SystClkSource;
 // use cortex_m_semihosting::hio;
 //use stm32f103xx::DWT;
 use rtfm::{app, Threshold, Resource};
-
+use characters::characters::*;
 //const LOGGING_FREQUENCY: u32 = 1; // Hz
 //const BAUD_RATE: u32 = 115_200;
 
@@ -30,7 +32,7 @@ app! {
     },
 
     idle: {
-        resources: [GPIOA, START_POSITION, NEXT_SLOT],
+        resources: [GPIOA, START_POSITION, NEXT_SLOT, TIM2],
     },
 
     tasks: {
@@ -44,6 +46,12 @@ app! {
             resources: [TIM2, GPIOC, GPIOA, START_POSITION, NEXT_SLOT],
         },
 
+        /*TIM3: {
+            priority: 3,
+            path: tim5,
+            resources: [TIM3, GPIOC],
+        },*/
+
        /*USART1: {
             path: cmd,
             resources: [USART1, RECEIVE_BUFFER, BUFFER_INDEX, TIM2] 
@@ -52,7 +60,7 @@ app! {
        EXTI1: {
             priority: 2,
             path: hall_sensor,
-            resources: [EXTI, START_POSITION, U_SEC_PER_REV, LAST_TIME_STAMP, NEXT_SLOT, TIM2, DWT],
+            resources: [EXTI, START_POSITION, U_SEC_PER_REV, LAST_TIME_STAMP, NEXT_SLOT, TIM2, DWT, TIM3, GPIOC],
        },
     }, 
 } 
@@ -63,22 +71,15 @@ fn init(p: ::init::Peripherals, _r: ::init::Resources) {
     
     p.RCC.apb2enr.write(|w| w.iopcen().set_bit()); // Enable GPIOC clock 
     
-    
-    // Configure the SYSTICK
-    /*p.SYST.set_clock_source(SystClkSource::Core);
-    p.SYST.set_reload(8_000_000 / LOGGING_FREQUENCY);
-    p.SYST.enable_interrupt();
-    p.SYST.enable_counter();*/
-
     p.GPIOC.crh.write(|w| w.mode13().bits(1));          // Set PC13 as outpus (max 2 MHz) (user LED on bluepull)
 
     p.RCC.apb1enr.modify(|_, w| w.tim2en().set_bit());  // Enable TIM2 peripheral clock
    
-    let prescaler = 8 - 1;                           // 8 Mhz / 80 = 100kHz
+    let prescaler = 80 - 1;                           // 8 Mhz / 80 = 100kHz
     p.TIM2.psc.write(|w| w.psc().bits(prescaler));
 
     
-    let arr_value = 500;
+    let arr_value = 25;
     p.TIM2.arr.write(|w| unsafe{w.bits(arr_value)});    // Auto reload register
 
     p.TIM2.dier.write(|w| w.uie().set_bit());   // Interrupt enable TIM2 update event
@@ -87,25 +88,20 @@ fn init(p: ::init::Peripherals, _r: ::init::Resources) {
     p.TIM2.cr1.write(|w| w.cen().bit(true));    // Enable TIM2
 
     
-    unsafe {
-        p.DWT.cyccnt.write(0);
-        p.DWT.sleepcnt.write(0);
-    }
-    p.DWT.enable_cycle_counter();
-   
 
-
-    /*let tim5_psc = 800 - 1; // 8Mhz / 8 = 1Mhz
-    p.RCC.apb1enr.modify(|_, w| w.tim5en().set_bit());  // Enable TIM5 peripheral clock 
+    p.RCC.apb1enr.modify(|_, w| w.tim3en().set_bit());  // Enable TIM3 peripheral clock 
+    
+    let tim5_psc = 8 - 1; // 8Mhz / 8 = 1Mhz
+    p.TIM3.psc.write(|w| w.psc().bits(tim5_psc));
     
     let tim5_arr_value = 0xFFFF;
-    p.TIM5.arr.write(|w| unsafe{w.bits(tim5_arr_value)});    // Auto reload register
-    
-    p.TIM5.psc.write(|w| w.psc().bits(tim5_psc));
-    p.TIM5.egr.write(|w| w.ug().set_bit());     // Reset on timer interrupt
-    p.TIM5.cr1.write(|w| w.arpe().set_bit());   // Auto reload on interrupt
-    p.TIM5.cr1.write(|w| w.cen().bit(true));    // Enable TIM5
-*/
+    p.TIM3.arr.write(|w| unsafe{w.bits(tim5_arr_value)});    // Auto reload register 
+
+    //p.TIM3.dier.write(|w| w.uie().set_bit());   // Interrupt enable TIM2 update event
+    p.TIM3.egr.write(|w| w.ug().set_bit());     // Reset on timer interrupt
+    p.TIM3.cr1.write(|w| w.arpe().set_bit());   // Auto reload on interrupt
+    p.TIM3.cr1.write(|w| w.cen().bit(true));    // Enable TIM3
+
 
     //p.RCC.apb2enr.modify(|_, w| w.usart1en().set_bit());            // Enable USART1 clock
     p.RCC.apb2enr.modify(|_, w| w.iopaen().set_bit());              // Enable GPIOA clock
@@ -139,78 +135,25 @@ fn init(p: ::init::Peripherals, _r: ::init::Resources) {
     p.EXTI.imr.modify(|_, w| w.mr1().set_bit());
     p.EXTI.ftsr.modify(|_, w| w.tr1().set_bit());
 
-    //iprintln!(&p.ITM.stim[0], "init done");
 }
 
 fn idle(t: &mut Threshold, mut r: ::idle::Resources) -> ! {
- 
-    let T = [
-        [true, false, false, false, false],
-        [true, false, false, false, false],
-        [true, true, true, true, true],
-        [true, false, false, false, false],
-        [true, false, false, false, false]];
 
-   
-    let E = [
-        [true, true, true, true, true],
-        [true, false, true, false, true],
-        [true, false, true, false, true],
-        [true, false, false, false, true],
-        [true, false, false, false, true]];
+    const NR_CHARS: usize = 12; 
+    let tmp = [O, P, Q, R, S, T, U, V, W, X, Y, Z];
+    let mut text = [[false; 5];  NR_CHARS * 6];
 
-     
-    let S = [
-        [true, true, true, false, true],
-        [true, false, true, false, true],
-        [true, false, true, false, true],
-        [true, false, true, false, true],
-        [true, false, true, true, true]];
-
-    let BLANK = [false, false, false, false, false];
-
-    let text = [
-    
-        [true, false, false, false, false],
-        [true, false, false, false, false],
-        [true, true, true, true, true],
-        [true, false, false, false, false],
-        [true, false, false, false, false],
-
-        [false, false, false, false, false],
-
-        [true, true, true, true, true],
-        [true, false, true, false, true],
-        [true, false, true, false, true],
-        [true, false, false, false, true],
-        [true, false, false, false, true],
-
-
-        [false, false, false, false, false],
-
-        [true, true, true, false, true],
-        [true, false, true, false, true],
-        [true, false, true, false, true],
-        [true, false, true, false, true],
-        [true, false, true, true, true],
-
-
-        [false, false, false, false, false],
+    let mut cnt = 0;
+    for c in tmp.iter() {
         
-        [true, false, false, false, false],
-        [true, false, false, false, false],
-        [true, true, true, true, true],
-        [true, false, false, false, false],
-        [true, false, false, false, false],
+        for column in c.iter() {
+            text[cnt] = column.clone();
+            cnt += 1;
+        }
+    }
+    
 
-        [false, false, false, false, false] ];
-    /*
-    let text = [[true, false, false, false, false], 
-                [true, true, false, false, false], 
-                [true, true, true, false, false], 
-                [true, true, true, true, false], 
-                [true, true, true, true, true], 
-                [false, false, false, false, false] ];*/
+
     loop {
         let mut start_position = false;
         r.START_POSITION.claim(t, |v, _t| start_position = **v);
@@ -218,6 +161,9 @@ fn idle(t: &mut Threshold, mut r: ::idle::Resources) -> ! {
         
         if start_position {
            
+            r.TIM2.claim_mut(t, |tim2, _| {   
+                tim2.cnt.write(|w| unsafe{ w.bits(0)});
+            });
             for column in text.iter() {
             
 
@@ -225,6 +171,10 @@ fn idle(t: &mut Threshold, mut r: ::idle::Resources) -> ! {
                 while next_slot == false {
                     r.NEXT_SLOT.claim(t, |v, _t| next_slot = **v);
                 }
+
+                r.NEXT_SLOT.claim_mut(t, |next_slot, _t| { 
+                    **next_slot = false;
+                });
 
                 r.GPIOA.claim_mut(t, |gpioa, _t| { 
                     gpioa.odr.write(|w| w.
@@ -237,9 +187,6 @@ fn idle(t: &mut Threshold, mut r: ::idle::Resources) -> ! {
                 });
 
             
-                r.NEXT_SLOT.claim_mut(t, |next_slot, _t| { 
-                    **next_slot = false;
-                });
 
             }
 
@@ -253,26 +200,44 @@ fn idle(t: &mut Threshold, mut r: ::idle::Resources) -> ! {
 
     }
 }
+/*
+fn tim5(t: &mut Threshold, mut r: TIM3::Resources) {
+
+ 
+    r.GPIOC.claim_mut(t, |gpioc, _t| {
+        gpioc.odr.write(|w| w.odr13().bit( !gpioc.odr.read().odr13().bit() ));
+        
+    });
+
+    r.TIM3.claim_mut(t, |tim3, _t| {
+        tim3.sr.write(|w| w.uif().clear_bit()); 
+    
+    });
+ 
+}*/
 
 fn hall_sensor(t: &mut Threshold, mut r: EXTI1::Resources) {
    
-    //let current_time_stamp: u32 = r.TIM5.cnt.read().cnt().bits() as u32;
+    //let current_time_stamp: u32 = r.TIM3.cnt.read().bits() as u32;
+    //let current_time_stamp: u32 = 100;
+
+    let mut current_time_stamp: u32 = 1;
     
-    //let mut current_time_stamp: u32 = 0;
-    
-    //r.TIM5.claim(t, |v, _t| current_time_stamp = v.cnt.read().bits() as u32);
+    r.TIM3.claim(t, |v, _t| current_time_stamp = v.cnt.read().bits() as u32);
         
        // .cnt.read().cnt().bits() as u32;
     
-    //r.TIM5.cnt.write(|w| unsafe{ w.bits(0)} );
+    r.TIM3.claim_mut(t, |tim3, _| {   
+        tim3.cnt.write(|w| unsafe{ w.bits(0)});
+    });
 
-    //r.TIM5.egr.write(|w| w.tg().set_bit());
-    //r.TIM5.cr1.write(|w| w.cen().bit(true));    // Enable TIM5
-    /*r.TIM5.cnt.read(|v, _t| {
+    //r.TIM3.egr.write(|w| w.tg().set_bit());
+    //r.TIM3.cr1.write(|w| w.cen().bit(true));    // Enable TIM3
+    /*r.TIM3.cnt.read(|v, _t| {
         current_time_stamp = **v
     });*/
-    let current_time_stamp = r.DWT.cyccnt.read();
-    unsafe {r.DWT.cyccnt.write(0)};
+    //let current_time_stamp = r.DWT.cyccnt.read();
+    //unsafe {r.DWT.cyccnt.write(0)};
     
 
     r.START_POSITION.claim_mut(t, |start_pos, _t| {
@@ -280,47 +245,31 @@ fn hall_sensor(t: &mut Threshold, mut r: EXTI1::Resources) {
     });
 
 
-    r.NEXT_SLOT.claim_mut(t, |next_slot, _t| {
-       **next_slot = true; 
-    });
-    //**r.START_POSITION = true;
-    //**r.NEXT_SLOT = true;
+   
+    //let u_sec_per_rev = current_time_stamp / 8;
+    let u_sec_per_rev = current_time_stamp;
+    let u_sec_per_deg = u_sec_per_rev;
+    let slot_angle = 6;
     
-    let u_sec_per_rev = current_time_stamp / 8;
-    let deg_per_u_sec = u_sec_per_rev / 360;
-
-
-    //let u_sec_per_rev = (current_time_stamp - **r.LAST_TIME_STAMP) / 8;
-
-    //**r.U_SEC_PER_REV = u_sec_per_rev;
-    //**r.LAST_TIME_STAMP = current_time_stamp;
-    //**r.START_POSITION = true;
-    //**r.NEXT_SLOT = true;
-
-
-    //let arr_value = 50;
+    //let mut arr_value = u_sec_per_rev * slot_angle / 1_000_000;
     
-    //let slot_angle = 200 * 1_000_000;
-    let slot_angle = 5;
-    
-    let mut arr_value = u_sec_per_rev * slot_angle / 1_000_000;
-    
+    let mut arr_value = u_sec_per_deg * slot_angle;
     //let mut arr_value = slot_angle / deg_per_u_sec;
 
-
-    if arr_value <= 0 {
-        arr_value = 1;
+    if arr_value < 10 {
+        arr_value = 10;
     } else if arr_value > 0xFFFF {
         arr_value = 0xFFFF;
     }
-    //if arr_value == 0 {
-    //    arr_value = 100;
-    //}
-    //
+
+    arr_value = 25; // !!!! REMEMBER THIS !!!!
+
     r.TIM2.claim_mut(t, |tim2, _t| {
         tim2.arr.write(|w| unsafe{ w.bits(arr_value)  });   
         tim2.egr.write(|w| w.tg().set_bit());
     });
+
+
     //r.TIM2.arr.write(|w| unsafe{w.bits(arr_value)});    // Auto reload register
     //r.TIM2.egr.write(|w| w.tg().set_bit());
 
@@ -332,40 +281,9 @@ fn hall_sensor(t: &mut Threshold, mut r: EXTI1::Resources) {
 
 }
 
-/*fn logging(t: &mut Threshold, r: SYS_TICK::Resources) {
-    
-    /*let mut percent: u32 = 0;
-
-    let mut time_idle = 0;
-    let mut time_busy = 0;
-
-    r.IDLE_COUNTER.claim(t, |v, _t| time_idle = **v);
-    r.BUSY_COUNTER.claim(t, |v, _t| time_busy = **v);
-
-    let total_time = time_idle.wrapping_add(time_busy); 
-    if total_time > 0 {
-        percent = time_busy.wrapping_mul(100).wrapping_div(total_time);
-    }*/
- 
-
-    //if percent < 50 {
-    //    for _ in 0..8000 {};
-    //} else {
-    //    for _ in 0..3000 {};
-   // }
-    
-    //iprintln!(&r.ITM.stim[0],"busy: {}, idle: {}, percent: {}", time_busy, time_idle, percent);
-}*/
-
+   
 fn blink_led(t: &mut Threshold, mut r: TIM2::Resources) {
     
-
-   /* let mut blink_enable = true;
-    r.BLINK_ENABLE.claim(t, |v, _t| blink_enable = **v);
-
-    if blink_enable == false {
-        return;
-    }*/
 
     r.TIM2.claim_mut(t, |tim2, _t| {
         tim2.sr.write(|w| w.uif().clear_bit()); 
@@ -375,28 +293,6 @@ fn blink_led(t: &mut Threshold, mut r: TIM2::Resources) {
     r.NEXT_SLOT.claim_mut(t, |next_slot, _t| {
        **next_slot = true; 
     });
-
-    //**r.NEXT_SLOT = true;
-
-
-    /*r.GPIOA.claim_mut(t, |gpioa, _t| { 
-        gpioa.odr.write(|w| w.
-            odr7().bit(true).
-            odr6().bit(true).
-            odr5().bit(true).
-            odr4().bit(true).
-            odr3().bit(true).
-            odr2().bit(true));
-    });*/
-    
-
-    /*if **r.START_POSITION == true {
-        r.GPIOC.claim_mut(t, |gpioc, _t| {
-        
-            gpioc.odr.write(|w| w.odr13().bit( !gpioc.odr.read().odr13().bit() ));
-        });
-    }
-    **r.START_POSITION = false;*/
 }
 
 /*
