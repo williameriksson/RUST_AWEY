@@ -1,15 +1,9 @@
-# Description
-Three tasks program. It prints CPU statistics over ITM port 0, it takes commands over USART1 to control the blinking of the onboard LED.
+# RUST - Are We Embedded Yet
+An in-depth course in embedded system given at Luleå university of technology.
 
-Commands:
-start
-pause
-period 1-1000 
+## Project - Printing device
 
-# Build
-Install required tools according to the quick start guide provided in the course. Build by `xargo build --target thumbv7m-none-eabi`.
-
-# Run
-Connect PA9 to usb <-> serial RX, Connect PA10 to usb <-> serial TX.
-Connect STM32 device to the computer, connect to it with openocd by `openocd -f interface/stlink-v2-1.cfg -f target/stm32f1x.cfg`.
-Flash and debug the device with `arm-none-eabi-gdb <PROJECT_PATH>/target/thumbv7m-none-eabi/debug/assignment_5a`. 
+### Description
+The project consists of making a "printing device". The device consists of a motor, a stick with LEDs mounted at the end of the stick, a hall sensor, magnets, a battery and a STM32 microcontroller. The device prints human readable text by turning LEDs on and off with precise timings. The code should is written in Rust.  
+  
+The desired width of the characters is pre-defined and can be changed, the device does thus take into account the current angular velocity to keep the text at constant width. 
