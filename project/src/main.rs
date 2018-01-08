@@ -62,7 +62,7 @@ fn init(p: ::init::Peripherals, _r: ::init::Resources) {
 
     p.RCC.apb1enr.modify(|_, w| w.tim2en().set_bit());  // Enable TIM2 peripheral clock
    
-    let prescaler = 8 - 1;                              // 8 Mhz / 80 = 100kHz
+    let prescaler = 80 - 1;                              // 8 Mhz / 80 = 100kHz
     p.TIM2.psc.write(|w| w.psc().bits(prescaler));
 
     
@@ -78,7 +78,7 @@ fn init(p: ::init::Peripherals, _r: ::init::Resources) {
     // Enable timer 3, used to calculate angular velocity
     p.RCC.apb1enr.modify(|_, w| w.tim3en().set_bit());  // Enable TIM3 peripheral clock 
     
-    let tim3_psc = 8 - 1; // 8Mhz / 8 = 1Mhz
+    let tim3_psc = 80 - 1; // 8Mhz / 8 = 1Mhz
     p.TIM3.psc.write(|w| w.psc().bits(tim3_psc));
     
     let tim3_arr_value = 0xFFFF;
