@@ -8,7 +8,11 @@ The project consists of making a "printing device". The device consists of a mot
   
 The desired width of the characters is pre-defined and can be changed, the device does thus take into account the current angular velocity to keep the text at constant width.  
   
-The stick on which the components are mounted to is contructed in FreeCad and 3D-printed with an Ultimaker 2. The LEDs, resistors and the hall sensor are glued to the stick and wired according to the schematic below.
+The stick on which the components are mounted to is contructed in FreeCad and 3D-printed with an Ultimaker 2. 
+![alt text](./stick1.PNG)
+![alt text](./stick2.PNG)
+
+The LEDs, resistors and the hall sensor are glued to the stick and wired according to the schematic below.
 
 ![alt text](./schemeit-project.png)
 
