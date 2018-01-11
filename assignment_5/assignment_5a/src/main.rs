@@ -8,10 +8,7 @@ extern crate cortex_m_rtfm as rtfm;
 extern crate cortex_m;
 
 use cortex_m::{iprint, iprintln};
-//use core::fmt::Write;
 use cortex_m::peripheral::SystClkSource;
-// use cortex_m_semihosting::hio;
-//use stm32f103xx::DWT;
 use rtfm::{app, Threshold, Resource};
 
 const LOGGING_FREQUENCY: u32 = 1; // Hz
@@ -100,26 +97,30 @@ fn init(p: ::init::Peripherals, _r: ::init::Resources) { p.RCC.apb2enr.write(|w|
 
 fn idle(t: &mut Threshold, mut r: ::idle::Resources) -> ! {
  
-    let mut prev_idle_end = 0;
+    let mut prev_time = 0;
     loop {
         cortex_m::interrupt::disable();
         
-        let mut idle_start = 0;
-        r.DWT.claim(t, |v, _t| idle_start = v.cyccnt.read());
+        // Read current clockcycle count
+        let mut current_count = 0;
+        r.DWT.claim(t, |v, _t| current_count = v.cyccnt.read());
+        // Increment the busy counter with the number of clockcycles since last idle ended until now when the last work ended.
+        r.BUSY_COUNTER.claim_mut(t, |v, _t| **v = (**v).wrapping_add(current_count.wrapping_sub(prev_time)));
+
+        // Read the counter just before the sleep begins.
+        let mut before_sleep = 0;
+        r.DWT.claim(t, |v, _t| before_sleep= v.cyccnt.read());
         
         rtfm::wfi();
-         
-        let mut idle_end = 0;
-        r.DWT.claim(t, |v, _t| idle_end = v.cyccnt.read());
-
-        let time_idle = idle_end.wrapping_sub(idle_start);
-        let time_busy = idle_start.wrapping_sub(prev_idle_end);
-
-        r.IDLE_COUNTER.claim_mut(t, |v, _t| **v = time_idle); 
-        r.BUSY_COUNTER.claim_mut(t, |v, _t| **v = time_busy);
         
-        prev_idle_end = idle_end;
+        // Interrupt arrived, read the clock cycle count after sleep and
+        // increment the idle counter with the sleep duration.
+        r.DWT.claim(t, |v, _t| current_count = v.cyccnt.read());
+        r.IDLE_COUNTER.claim_mut(t, |v, _t| **v = (**v).wrapping_add(current_count.wrapping_sub(before_sleep))); 
 
+        // Save the cycle count for the end of current idle / start of the new work.
+        prev_time = current_count;
+        
         unsafe{cortex_m::interrupt::enable();}
 
     }
@@ -141,32 +142,32 @@ fn logging(t: &mut Threshold, r: SYS_TICK::Resources) {
     }
  
 
-    //if percent < 50 {
-    //    for _ in 0..8000 {};
-    //} else {
-    //    for _ in 0..3000 {};
-   // }
-    
     iprintln!(&r.ITM.stim[0],"busy: {}, idle: {}, percent: {}", time_busy, time_idle, percent);
+
+    // Reset the idle and the busy counters
+    r.IDLE_COUNTER.claim_mut(t, |v, _t| **v = 0);
+    r.BUSY_COUNTER.claim_mut(t, |v, _t| **v = 0);
 }
 
 fn blink_led(t: &mut Threshold, r: TIM2::Resources) {
     
-
+    // Check if in paused state or not
     let mut blink_enable = true;
     r.BLINK_ENABLE.claim(t, |v, _t| blink_enable = **v);
 
+    // If in paused state, return
     if blink_enable == false {
         return;
     }
 
+    // Reset interrupt flag
     r.TIM2.claim_mut(t, |tim2, _t| {
         tim2.sr.write(|w| w.uif().clear_bit()); 
     
     });
 
+    // Toggle the LED 
     r.GPIOC.claim_mut(t, |gpioc, _t| {
-        
         gpioc.odr.write(|w| w.odr13().bit( !gpioc.odr.read().odr13().bit() ));
     });
 }
